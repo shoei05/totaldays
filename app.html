@@ -1,0 +1,1971 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期間計算アプリ</title>
+    <meta name="theme-color" content="#c5487b">
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --brand: #c5487b; }
+        body {
+            font-family: 'Hiragino Sans', 'Meiryo', sans-serif;
+            background-color: #f9fafb;
+        }
+        .tab.active {
+            background-color: var(--brand);
+            color: white;
+        }
+        .result-appear {
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* カレンダーのスタイル */
+        .calendar {
+            width: 100%;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+            position: absolute;
+            z-index: 10;
+            top: 100%;
+            left: 0;
+        }
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background-color: #f3f4f6;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            padding: 8px;
+        }
+        .calendar-day {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 36px;
+            cursor: pointer;
+            border-radius: 50%;
+            font-size: 14px;
+        }
+        .calendar-day:hover:not(.empty):not(.selected) {
+            background-color: #f3f4f6;
+        }
+        .calendar-day.selected {
+            background-color: var(--brand);
+            color: white;
+        }
+        .calendar-day.today:not(.selected) {
+            border: 1px solid var(--brand);
+            color: var(--brand);
+            font-weight: 500;
+        }
+        .calendar-day.empty {
+            cursor: default;
+        }
+        .weekday {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 24px;
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        .weekday.sunday {
+            color: #ef4444;
+        }
+        .weekday.saturday {
+            color: #3b82f6;
+        }
+        .calendar-day.sunday {
+            color: #ef4444;
+        }
+        .calendar-day.saturday {
+            color: #3b82f6;
+        }
+        .calendar-day.sunday.selected, .calendar-day.saturday.selected {
+            color: white;
+        }
+        .preset-btn {
+            transition: all 0.2s;
+        }
+        .preset-btn:hover {
+            transform: translateY(-1px);
+        }
+        .swap-btn {
+            transition: all 0.3s;
+        }
+        .swap-btn:hover {
+            transform: rotate(180deg);
+        }
+        .mode-tab.active { background-color: var(--brand); color: white; }
+        .input-number {
+            -moz-appearance: textfield;
+        }
+        .input-number::-webkit-outer-spin-button,
+        .input-number::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        /* Brand overrides for Tailwind blue utilities used in markup */
+        .text-blue-600 { color: var(--brand) !important; }
+        .hover\:text-blue-800:hover { color: #9e2f59 !important; }
+        .bg-blue-600 { background-color: var(--brand) !important; }
+        .hover\:bg-blue-700:hover { background-color: #9e2f59 !important; }
+        .hover\:bg-blue-50:hover { background-color: #fdeaf1 !important; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white rounded-lg w-full max-w-md p-6 border border-gray-200">
+        <h1 class="text-2xl font-bold text-center text-gray-800 mb-5">期間計算アプリ</h1>
+        
+        <!-- モード切り替えタブ -->
+        <div class="flex mb-5 border rounded-md overflow-hidden">
+            <button id="mode-normal" class="mode-tab flex-1 py-2 text-center font-medium text-base active">通常モード</button>
+            <button id="mode-reverse" class="mode-tab flex-1 py-2 text-center font-medium text-base">逆算モード</button>
+        </div>
+        
+        <!-- 通常モード -->
+        <div id="normal-mode">
+            <!-- 開始日セクション -->
+            <div class="mb-5">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-base font-medium text-gray-700">開始日</h2>
+                    <div class="flex space-x-2">
+                        <button id="start-preset-yesterday" class="preset-btn text-sm text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">昨日</button>
+                        <button id="start-preset-today" class="preset-btn text-sm text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">今日</button>
+                        <button id="start-preset-week" class="preset-btn text-sm text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">1週間前</button>
+                    </div>
+                </div>
+                
+                <!-- タブ切り替え -->
+                <div class="flex mb-3 border rounded-md overflow-hidden">
+                    <button id="tab-western" class="tab flex-1 py-2 text-center font-medium text-sm">西暦</button>
+                    <button id="tab-japanese" class="tab flex-1 py-2 text-center font-medium text-sm">元号</button>
+                </div>
+                
+                <!-- 西暦入力フォーム -->
+                <div id="western-form" class="mb-2 relative">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <select id="western-year" class="w-full px-2 py-2 border border-gray-300 rounded-md text-base">
+                                <!-- 年はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">年</label>
+                        </div>
+                        <div>
+                            <select id="western-month" class="w-full px-2 py-2 border border-gray-300 rounded-md text-base">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">月</label>
+                        </div>
+                        <div>
+                            <select id="western-day" class="w-full px-2 py-2 border border-gray-300 rounded-md text-base">
+                                <!-- 日はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">日</label>
+                        </div>
+                    </div>
+                    <button id="start-calendar-toggle" class="absolute right-2 top-1.5 text-gray-500 hover:text-blue-600">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
+                    <div id="start-calendar" class="calendar hidden mt-1"></div>
+                </div>
+                
+                <!-- 元号入力フォーム -->
+                <div id="japanese-form" class="mb-2 hidden relative">
+                    <div class="grid grid-cols-4 gap-2">
+                        <div>
+                            <select id="era" class="w-full px-2 py-2 border border-gray-300 rounded-md text-base">
+                                <option value="reiwa">令和</option>
+                                <option value="heisei">平成</option>
+                                <option value="showa">昭和</option>
+                                <option value="taisho">大正</option>
+                                <option value="meiji">明治</option>
+                            </select>
+                        </div>
+                        <div>
+                            <select id="era-year" class="w-full px-2 py-2 border border-gray-300 rounded-md text-base">
+                                <!-- 年はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">年</label>
+                        </div>
+                        <div>
+                            <select id="era-month" class="w-full px-2 py-2 border border-gray-300 rounded-md text-base">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">月</label>
+                        </div>
+                        <div>
+                            <select id="era-day" class="w-full px-2 py-2 border border-gray-300 rounded-md text-base">
+                                <!-- 日はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">日</label>
+                        </div>
+                    </div>
+                    <button id="start-jp-calendar-toggle" class="absolute right-2 top-1.5 text-gray-500 hover:text-blue-600">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
+                    <div id="start-jp-calendar" class="calendar hidden mt-1"></div>
+                </div>
+            </div>
+            
+            <!-- 日付入れ替えボタン -->
+            <div class="flex justify-center mb-5">
+                <button id="swap-dates" class="swap-btn bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full p-2 focus:outline-none">
+                    <i class="fas fa-exchange-alt"></i>
+                </button>
+            </div>
+            
+            <!-- 終了日セクション -->
+            <div class="mb-5">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-base font-medium text-gray-700">終了日</h2>
+                    <div class="flex space-x-2">
+                        <button id="end-preset-yesterday" class="preset-btn text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">昨日</button>
+                        <button id="end-preset-today" class="preset-btn text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">今日</button>
+                        <button id="reset-to-today" class="preset-btn text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">リセット</button>
+                    </div>
+                </div>
+                
+                <!-- タブ切り替え -->
+                <div class="flex mb-3 border rounded-md overflow-hidden">
+                    <button id="ref-tab-western" class="tab flex-1 py-1.5 text-center font-medium text-xs">西暦</button>
+                    <button id="ref-tab-japanese" class="tab flex-1 py-1.5 text-center font-medium text-xs">元号</button>
+                </div>
+                
+                <!-- 西暦入力フォーム（終了日） -->
+                <div id="ref-western-form" class="mb-2 relative">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <select id="ref-western-year" class="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 年はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">年</label>
+                        </div>
+                        <div>
+                            <select id="ref-western-month" class="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">月</label>
+                        </div>
+                        <div>
+                            <select id="ref-western-day" class="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 日はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">日</label>
+                        </div>
+                    </div>
+                    <button id="end-calendar-toggle" class="absolute right-2 top-1.5 text-gray-500 hover:text-blue-600">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
+                    <div id="end-calendar" class="calendar hidden mt-1"></div>
+                </div>
+                
+                <!-- 元号入力フォーム（終了日） -->
+                <div id="ref-japanese-form" class="mb-2 hidden relative">
+                    <div class="grid grid-cols-4 gap-2">
+                        <div>
+                            <select id="ref-era" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <option value="reiwa">令和</option>
+                                <option value="heisei">平成</option>
+                                <option value="showa">昭和</option>
+                                <option value="taisho">大正</option>
+                                <option value="meiji">明治</option>
+                            </select>
+                        </div>
+                        <div>
+                            <select id="ref-era-year" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 年はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">年</label>
+                        </div>
+                        <div>
+                            <select id="ref-era-month" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">月</label>
+                        </div>
+                        <div>
+                            <select id="ref-era-day" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 日はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">日</label>
+                        </div>
+                    </div>
+                    <button id="end-jp-calendar-toggle" class="absolute right-2 top-1.5 text-gray-500 hover:text-blue-600">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
+                    <div id="end-jp-calendar" class="calendar hidden mt-1"></div>
+                </div>
+            </div>
+            
+            <button id="calculate" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-md mb-5 text-sm transition-colors">
+                期間を計算する
+            </button>
+        </div>
+        
+        <!-- 逆算モード -->
+        <div id="reverse-mode" class="hidden">
+            <!-- 開始日セクション -->
+            <div class="mb-5">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-base font-medium text-gray-700">開始日</h2>
+                    <div class="flex space-x-2">
+                        <button id="reverse-start-preset-yesterday" class="preset-btn text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">昨日</button>
+                        <button id="reverse-start-preset-today" class="preset-btn text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">今日</button>
+                        <button id="reverse-start-preset-week" class="preset-btn text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-md hover:bg-blue-50">1週間前</button>
+                    </div>
+                </div>
+                
+                <!-- タブ切り替え -->
+                <div class="flex mb-3 border rounded-md overflow-hidden">
+                    <button id="reverse-tab-western" class="tab flex-1 py-1.5 text-center font-medium text-xs">西暦</button>
+                    <button id="reverse-tab-japanese" class="tab flex-1 py-1.5 text-center font-medium text-xs">元号</button>
+                </div>
+                
+                <!-- 西暦入力フォーム -->
+                <div id="reverse-western-form" class="mb-2 relative">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <select id="reverse-western-year" class="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 年はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">年</label>
+                        </div>
+                        <div>
+                            <select id="reverse-western-month" class="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">月</label>
+                        </div>
+                        <div>
+                            <select id="reverse-western-day" class="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 日はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">日</label>
+                        </div>
+                    </div>
+                    <button id="reverse-start-calendar-toggle" class="absolute right-2 top-1.5 text-gray-500 hover:text-blue-600">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
+                    <div id="reverse-start-calendar" class="calendar hidden mt-1"></div>
+                </div>
+                
+                <!-- 元号入力フォーム -->
+                <div id="reverse-japanese-form" class="mb-2 hidden relative">
+                    <div class="grid grid-cols-4 gap-2">
+                        <div>
+                            <select id="reverse-era" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <option value="reiwa">令和</option>
+                                <option value="heisei">平成</option>
+                                <option value="showa">昭和</option>
+                                <option value="taisho">大正</option>
+                                <option value="meiji">明治</option>
+                            </select>
+                        </div>
+                        <div>
+                            <select id="reverse-era-year" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 年はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">年</label>
+                        </div>
+                        <div>
+                            <select id="reverse-era-month" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">月</label>
+                        </div>
+                        <div>
+                            <select id="reverse-era-day" class="w-full px-1.5 py-1.5 border border-gray-300 rounded-md text-sm">
+                                <!-- 日はJSで動的に生成 -->
+                            </select>
+                            <label class="block text-sm text-gray-500 mt-1 ml-1">日</label>
+                        </div>
+                    </div>
+                    <button id="reverse-start-jp-calendar-toggle" class="absolute right-2 top-1.5 text-gray-500 hover:text-blue-600">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
+                    <div id="reverse-start-jp-calendar" class="calendar hidden mt-1"></div>
+                </div>
+            </div>
+            
+            <!-- 経過期間入力セクション -->
+            <div class="mb-5">
+                <h2 class="text-sm font-medium text-gray-700 mb-2">経過期間</h2>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <div class="flex items-center">
+                            <input type="number" id="period-years-input" class="input-number w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm" min="0" value="0">
+                            <label class="ml-2 text-sm text-gray-600">年</label>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex items-center">
+                            <input type="number" id="period-months-input" class="input-number w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm" min="0" max="11" value="0">
+                            <label class="ml-2 text-sm text-gray-600">月</label>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex items-center">
+                            <input type="number" id="period-days-input" class="input-number w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm" min="0" max="30" value="0">
+                            <label class="ml-2 text-sm text-gray-600">日</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="future-date-checkbox" class="mr-2" checked>
+                        <label for="future-date-checkbox" class="text-sm text-gray-600">過去の日付を計算（チェックなしは未来の日付）</label>
+                    </div>
+                </div>
+            </div>
+            
+            <button id="calculate-reverse" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-md mb-5 text-sm transition-colors">
+                逆算する
+            </button>
+        </div>
+        
+        <!-- 結果表示 -->
+        <div id="result-container" class="hidden">
+            <div class="result-appear bg-gray-50 border border-gray-200 rounded-md p-4">
+                <!-- 結果表示タブ -->
+                <div class="flex mb-3 border rounded-md overflow-hidden">
+                    <button id="result-tab-period" class="tab flex-1 py-1.5 text-center font-medium text-xs active">経過期間</button>
+                    <button id="result-tab-days" class="tab flex-1 py-1.5 text-center font-medium text-xs">経過日数</button>
+                </div>
+                
+                <!-- 経過期間表示 -->
+                <div id="period-result" class="mb-4">
+                    <p id="period-message" class="text-center text-gray-600 text-sm mb-2">-</p>
+                    <div class="flex justify-center items-baseline gap-1">
+                        <span id="period-years" class="text-2xl font-bold text-blue-600">-</span>
+                        <span class="text-sm text-gray-600">年</span>
+                        <span id="period-months" class="text-2xl font-bold text-blue-600">-</span>
+                        <span class="text-sm text-gray-600">か月</span>
+                        <span id="period-days" class="text-2xl font-bold text-blue-600">-</span>
+                        <span class="text-sm text-gray-600">日</span>
+                    </div>
+                    <p id="period-suffix" class="text-center text-gray-600 text-sm mt-2">が経過</p>
+                </div>
+                
+                <!-- 経過日数表示 -->
+                <div id="days-result" class="mb-4 hidden">
+                    <p id="days-message" class="text-center text-gray-600 text-sm mb-2">-</p>
+                    
+                    <!-- 開始日を1日目として計算 -->
+                    <div class="flex justify-center items-baseline mb-3">
+                        <span id="days-count" class="text-3xl font-bold text-blue-600">-</span>
+                        <span class="text-sm text-gray-600 ml-1">日目</span>
+                    </div>
+                    <p id="days-explanation" class="text-center text-gray-500 text-xs">（開始日を1日目として計算）</p>
+                    
+                    <!-- 純粋な経過日数 -->
+                    <div class="flex justify-center items-baseline mt-4 mb-1">
+                        <span id="days-elapsed" class="text-2xl font-bold text-green-600">-</span>
+                        <span class="text-sm text-gray-600 ml-1">日</span>
+                    </div>
+                    <p id="days-elapsed-explanation" class="text-center text-gray-500 text-xs">（開始日を含まない純粋な経過日数）</p>
+                </div>
+                
+                <div class="text-xs text-gray-500 border-t border-gray-200 pt-3 space-y-1.5">
+                    <p id="start-date-info" class="flex flex-col">
+                        <span class="font-medium text-gray-600">開始日:</span>
+                        <span class="ml-2">-</span>
+                    </p>
+                    <p id="end-date-info" class="flex flex-col">
+                        <span class="font-medium text-gray-600">終了日:</span>
+                        <span class="ml-2">-</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // モード切り替え要素
+            const modeNormal = document.getElementById('mode-normal');
+            const modeReverse = document.getElementById('mode-reverse');
+            const normalMode = document.getElementById('normal-mode');
+            const reverseMode = document.getElementById('reverse-mode');
+            
+            // 要素の取得（開始日）
+            const tabWestern = document.getElementById('tab-western');
+            const tabJapanese = document.getElementById('tab-japanese');
+            const westernForm = document.getElementById('western-form');
+            const japaneseForm = document.getElementById('japanese-form');
+            const westernYearSelect = document.getElementById('western-year');
+            const westernMonthSelect = document.getElementById('western-month');
+            const westernDaySelect = document.getElementById('western-day');
+            const eraSelect = document.getElementById('era');
+            const eraYearSelect = document.getElementById('era-year');
+            const eraMonthSelect = document.getElementById('era-month');
+            const eraDaySelect = document.getElementById('era-day');
+            
+            // 要素の取得（終了日）
+            const refTabWestern = document.getElementById('ref-tab-western');
+            const refTabJapanese = document.getElementById('ref-tab-japanese');
+            const refWesternForm = document.getElementById('ref-western-form');
+            const refJapaneseForm = document.getElementById('ref-japanese-form');
+            const refWesternYearSelect = document.getElementById('ref-western-year');
+            const refWesternMonthSelect = document.getElementById('ref-western-month');
+            const refWesternDaySelect = document.getElementById('ref-western-day');
+            const refEraSelect = document.getElementById('ref-era');
+            const refEraYearSelect = document.getElementById('ref-era-year');
+            const refEraMonthSelect = document.getElementById('ref-era-month');
+            const refEraDaySelect = document.getElementById('ref-era-day');
+            const resetToToday = document.getElementById('reset-to-today');
+            
+            // 逆算モードの要素
+            const reverseTabWestern = document.getElementById('reverse-tab-western');
+            const reverseTabJapanese = document.getElementById('reverse-tab-japanese');
+            const reverseWesternForm = document.getElementById('reverse-western-form');
+            const reverseJapaneseForm = document.getElementById('reverse-japanese-form');
+            const reverseWesternYearSelect = document.getElementById('reverse-western-year');
+            const reverseWesternMonthSelect = document.getElementById('reverse-western-month');
+            const reverseWesternDaySelect = document.getElementById('reverse-western-day');
+            const reverseEraSelect = document.getElementById('reverse-era');
+            const reverseEraYearSelect = document.getElementById('reverse-era-year');
+            const reverseEraMonthSelect = document.getElementById('reverse-era-month');
+            const reverseEraDaySelect = document.getElementById('reverse-era-day');
+            
+            // 経過期間入力要素
+            const periodYearsInput = document.getElementById('period-years-input');
+            const periodMonthsInput = document.getElementById('period-months-input');
+            const periodDaysInput = document.getElementById('period-days-input');
+            const futureDateCheckbox = document.getElementById('future-date-checkbox');
+            
+            // カレンダー関連の要素
+            const startCalendarToggle = document.getElementById('start-calendar-toggle');
+            const startCalendar = document.getElementById('start-calendar');
+            const startJpCalendarToggle = document.getElementById('start-jp-calendar-toggle');
+            const startJpCalendar = document.getElementById('start-jp-calendar');
+            const endCalendarToggle = document.getElementById('end-calendar-toggle');
+            const endCalendar = document.getElementById('end-calendar');
+            const endJpCalendarToggle = document.getElementById('end-jp-calendar-toggle');
+            const endJpCalendar = document.getElementById('end-jp-calendar');
+            
+            // 逆算モードのカレンダー関連要素
+            const reverseStartCalendarToggle = document.getElementById('reverse-start-calendar-toggle');
+            const reverseStartCalendar = document.getElementById('reverse-start-calendar');
+            const reverseStartJpCalendarToggle = document.getElementById('reverse-start-jp-calendar-toggle');
+            const reverseStartJpCalendar = document.getElementById('reverse-start-jp-calendar');
+            
+            // プリセットボタン
+            const startPresetToday = document.getElementById('start-preset-today');
+            const startPresetYesterday = document.getElementById('start-preset-yesterday');
+            const startPresetWeek = document.getElementById('start-preset-week');
+            const endPresetToday = document.getElementById('end-preset-today');
+            const endPresetYesterday = document.getElementById('end-preset-yesterday');
+            
+            // 逆算モードのプリセットボタン
+            const reverseStartPresetToday = document.getElementById('reverse-start-preset-today');
+            const reverseStartPresetYesterday = document.getElementById('reverse-start-preset-yesterday');
+            const reverseStartPresetWeek = document.getElementById('reverse-start-preset-week');
+            
+            // 日付入れ替えボタン
+            const swapDatesBtn = document.getElementById('swap-dates');
+            
+            // 計算ボタン
+            const calculateBtn = document.getElementById('calculate');
+            const calculateReverseBtn = document.getElementById('calculate-reverse');
+            
+            // 結果表示要素
+            const resultContainer = document.getElementById('result-container');
+            
+            // 結果表示タブ
+            const resultTabPeriod = document.getElementById('result-tab-period');
+            const resultTabDays = document.getElementById('result-tab-days');
+            const periodResult = document.getElementById('period-result');
+            const daysResult = document.getElementById('days-result');
+            
+            // 経過期間表示要素
+            const periodMessage = document.getElementById('period-message');
+            const periodYears = document.getElementById('period-years');
+            const periodMonths = document.getElementById('period-months');
+            const periodDays = document.getElementById('period-days');
+            const periodSuffix = document.getElementById('period-suffix');
+            
+            // 経過日数表示要素
+            const daysMessage = document.getElementById('days-message');
+            const daysCount = document.getElementById('days-count');
+            const daysExplanation = document.getElementById('days-explanation');
+            const daysElapsed = document.getElementById('days-elapsed');
+            const daysElapsedExplanation = document.getElementById('days-elapsed-explanation');
+            
+            // 日付情報表示要素
+            const startDateInfo = document.getElementById('start-date-info');
+            const endDateInfo = document.getElementById('end-date-info');
+            
+            // 元号の開始日
+            const eraStartDates = {
+                meiji: new Date(1868, 0, 25),  // 明治元年1月25日
+                taisho: new Date(1912, 6, 30), // 大正元年7月30日
+                showa: new Date(1926, 11, 25), // 昭和元年12月25日
+                heisei: new Date(1989, 0, 8),  // 平成元年1月8日
+                reiwa: new Date(2019, 4, 1)    // 令和元年5月1日
+            };
+            
+            // 元号の終了日
+            const eraEndDates = {
+                meiji: new Date(1912, 6, 29),  // 明治45年7月29日
+                taisho: new Date(1926, 11, 24), // 大正15年12月24日
+                showa: new Date(1989, 0, 7),   // 昭和64年1月7日
+                heisei: new Date(2019, 3, 30), // 平成31年4月30日
+                reiwa: new Date(2100, 11, 31)  // 仮の終了日
+            };
+            
+            // 元号の最大年
+            const eraMaxYears = {
+                meiji: 45,
+                taisho: 15,
+                showa: 64,
+                heisei: 31,
+                reiwa: 100  // 仮の最大値
+            };
+            
+            // 元号の日本語表記
+            const eraNames = {
+                meiji: "明治",
+                taisho: "大正",
+                showa: "昭和",
+                heisei: "平成",
+                reiwa: "令和"
+            };
+            
+            // 今日の日付
+            const today = new Date();
+            const currentYear = today.getFullYear();
+            const currentMonth = today.getMonth() + 1;
+            const currentDay = today.getDate();
+            
+            // モード切り替え
+            modeNormal.addEventListener('click', function() {
+                modeNormal.classList.add('active');
+                modeReverse.classList.remove('active');
+                normalMode.classList.remove('hidden');
+                reverseMode.classList.add('hidden');
+                resultContainer.classList.add('hidden');
+            });
+            
+            modeReverse.addEventListener('click', function() {
+                modeReverse.classList.add('active');
+                modeNormal.classList.remove('active');
+                reverseMode.classList.remove('hidden');
+                normalMode.classList.add('hidden');
+                resultContainer.classList.add('hidden');
+
+                // 通常モードで入力済みの内容を保持したまま、逆算モードに引き継ぐ
+                try {
+                    let startDate, endDate;
+
+                    // 開始日（通常モードの現在のタブ基準）
+                    if (!westernForm.classList.contains('hidden')) {
+                        const y = parseInt(westernYearSelect.value);
+                        const m = parseInt(westernMonthSelect.value);
+                        const d = parseInt(westernDaySelect.value);
+                        startDate = new Date(y, m - 1, d);
+                    } else {
+                        const era = eraSelect.value;
+                        const y = parseInt(eraYearSelect.value) || 1;
+                        const m = parseInt(eraMonthSelect.value);
+                        const d = parseInt(eraDaySelect.value);
+                        startDate = convertToWesternDate(era, y, m, d);
+                    }
+
+                    // 終了日（通常モードの現在のタブ基準）
+                    if (!refWesternForm.classList.contains('hidden')) {
+                        const y = parseInt(refWesternYearSelect.value);
+                        const m = parseInt(refWesternMonthSelect.value);
+                        const d = parseInt(refWesternDaySelect.value);
+                        endDate = new Date(y, m - 1, d);
+                    } else {
+                        const era = refEraSelect.value;
+                        const y = parseInt(refEraYearSelect.value) || 1;
+                        const m = parseInt(refEraMonthSelect.value);
+                        const d = parseInt(refEraDaySelect.value);
+                        endDate = convertToWesternDate(era, y, m, d);
+                    }
+
+                    // 逆算モードに開始日を反映（西暦タブを開いた状態で）
+                    reverseTabWestern.click();
+                    setDateToSpecific(
+                        reverseWesternYearSelect,
+                        reverseWesternMonthSelect,
+                        reverseWesternDaySelect,
+                        startDate
+                    );
+
+                    // 逆算モードの元号側も同期（念のため）
+                    const jpStart = convertToJapaneseEra(startDate);
+                    reverseEraSelect.value = jpStart.era;
+                    updateEraYears(reverseEraSelect, reverseEraYearSelect);
+                    reverseEraYearSelect.value = jpStart.year;
+                    reverseEraMonthSelect.value = jpStart.month;
+                    updateEraDays(reverseEraSelect, reverseEraYearSelect, reverseEraMonthSelect, reverseEraDaySelect);
+                    reverseEraDaySelect.value = jpStart.day;
+
+                    // 通常モードの開始日・終了日から差分を算出して期間入力に反映
+                    const diff = calculateDateDifference(startDate, endDate);
+                    periodYearsInput.value = Math.abs(diff.years) || 0;
+                    periodMonthsInput.value = Math.abs(diff.months) || 0;
+                    periodDaysInput.value = Math.abs(diff.days) || 0;
+                    // 過去方向かどうか（終了日が開始日より前ならチェック）
+                    futureDateCheckbox.checked = endDate < startDate;
+                } catch (e) {
+                    console.warn('逆算モードへの引き継ぎに失敗しました:', e);
+                }
+            });
+            
+            // 西暦の年を初期化（1900年から現在+100年まで）
+            function initializeYearSelects() {
+                // 通常モード
+                for (let year = currentYear + 100; year >= 1868; year--) {
+                    // 開始日用
+                    const option1 = document.createElement('option');
+                    option1.value = year;
+                    option1.textContent = year;
+                    westernYearSelect.appendChild(option1);
+                    
+                    // 終了日用
+                    const option2 = document.createElement('option');
+                    option2.value = year;
+                    option2.textContent = year;
+                    refWesternYearSelect.appendChild(option2);
+                    
+                    // 現在の年を選択
+                    if (year === currentYear) {
+                        option1.selected = true;
+                        option2.selected = true;
+                    }
+                }
+                
+                // 逆算モード
+                for (let year = currentYear + 100; year >= 1868; year--) {
+                    const option = document.createElement('option');
+                    option.value = year;
+                    option.textContent = year;
+                    reverseWesternYearSelect.appendChild(option);
+                    
+                    if (year === currentYear) {
+                        option.selected = true;
+                    }
+                }
+            }
+            
+            // 元号の年を初期化
+            function updateEraYears(eraSelect, eraYearSelect) {
+                const era = eraSelect.value;
+                const maxYear = eraMaxYears[era];
+                
+                // 現在選択されている年を保存
+                const currentSelectedYear = parseInt(eraYearSelect.value) || 1;
+                
+                eraYearSelect.innerHTML = '';
+                
+                // 元号の最初の年（元年）を追加
+                const firstYearOption = document.createElement('option');
+                firstYearOption.value = 1;
+                firstYearOption.textContent = '元';
+                eraYearSelect.appendChild(firstYearOption);
+                
+                // 2年以降を追加
+                for (let year = 2; year <= maxYear; year++) {
+                    const option = document.createElement('option');
+                    option.value = year;
+                    option.textContent = year;
+                    eraYearSelect.appendChild(option);
+                }
+                
+                // 以前選択されていた年を再選択（可能な場合）
+                if (currentSelectedYear <= maxYear) {
+                    eraYearSelect.value = currentSelectedYear;
+                } else {
+                    eraYearSelect.value = 1; // デフォルトは元年
+                }
+            }
+            
+            // 日の選択肢を更新（西暦）
+            function updateWesternDays(yearSelect, monthSelect, daySelect) {
+                const year = parseInt(yearSelect.value);
+                const month = parseInt(monthSelect.value);
+                
+                // 月の日数を計算
+                const daysInMonth = new Date(year, month, 0).getDate();
+                
+                // 現在選択されている日を保存
+                const currentSelectedDay = parseInt(daySelect.value) || 1;
+                
+                // 日の選択肢を更新
+                daySelect.innerHTML = '';
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const option = document.createElement('option');
+                    option.value = i;
+                    option.textContent = i;
+                    daySelect.appendChild(option);
+                    
+                    // 以前選択されていた日を再選択（可能な場合）
+                    if (i === currentSelectedDay) {
+                        option.selected = true;
+                    }
+                }
+            }
+            
+            // 日の選択肢を更新（元号）
+            function updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect) {
+                const era = eraSelect.value;
+                const year = parseInt(eraYearSelect.value) || 1;
+                const month = parseInt(eraMonthSelect.value);
+                
+                // 元号の開始年に変換
+                let westernYear;
+                switch(era) {
+                    case 'meiji': westernYear = 1867 + year; break;
+                    case 'taisho': westernYear = 1911 + year; break;
+                    case 'showa': westernYear = 1925 + year; break;
+                    case 'heisei': westernYear = 1988 + year; break;
+                    case 'reiwa': westernYear = 2018 + year; break;
+                }
+                
+                // 現在選択されている日を保存
+                const currentSelectedDay = parseInt(eraDaySelect.value) || 1;
+                
+                // 月の日数を計算
+                const daysInMonth = new Date(westernYear, month, 0).getDate();
+                
+                // 日の選択肢を更新
+                eraDaySelect.innerHTML = '';
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const option = document.createElement('option');
+                    option.value = i;
+                    option.textContent = i;
+                    eraDaySelect.appendChild(option);
+                    
+                    // 以前選択されていた日を再選択（可能な場合）
+                    if (i === currentSelectedDay) {
+                        option.selected = true;
+                    }
+                }
+            }
+            
+            // カレンダーを生成する関数
+            function generateCalendar(calendarElement, date, onDateSelect) {
+                // 現在の年月を取得
+                const year = date.getFullYear();
+                const month = date.getMonth();
+                
+                // カレンダーをクリア
+                calendarElement.innerHTML = '';
+                
+                // カレンダーヘッダーを作成
+                const header = document.createElement('div');
+                header.className = 'calendar-header';
+                
+                const prevBtn = document.createElement('button');
+                prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+                prevBtn.className = 'text-gray-600 hover:text-blue-600 focus:outline-none';
+                prevBtn.addEventListener('click', function() {
+                    const newDate = new Date(year, month - 1, 1);
+                    generateCalendar(calendarElement, newDate, onDateSelect);
+                });
+                
+                const monthYearText = document.createElement('div');
+                monthYearText.textContent = `${year}年 ${month + 1}月`;
+                monthYearText.className = 'font-medium';
+                
+                const nextBtn = document.createElement('button');
+                nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+                nextBtn.className = 'text-gray-600 hover:text-blue-600 focus:outline-none';
+                nextBtn.addEventListener('click', function() {
+                    const newDate = new Date(year, month + 1, 1);
+                    generateCalendar(calendarElement, newDate, onDateSelect);
+                });
+                
+                header.appendChild(prevBtn);
+                header.appendChild(monthYearText);
+                header.appendChild(nextBtn);
+                calendarElement.appendChild(header);
+                
+                // カレンダーグリッドを作成
+                const grid = document.createElement('div');
+                grid.className = 'calendar-grid';
+                
+                // 曜日のヘッダーを追加
+                const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+                weekdays.forEach((day, index) => {
+                    const weekdayElement = document.createElement('div');
+                    weekdayElement.textContent = day;
+                    weekdayElement.className = 'weekday';
+                    if (index === 0) weekdayElement.classList.add('sunday');
+                    if (index === 6) weekdayElement.classList.add('saturday');
+                    grid.appendChild(weekdayElement);
+                });
+                
+                // 月の最初の日の曜日を取得（0: 日曜日, 1: 月曜日, ...)
+                const firstDay = new Date(year, month, 1).getDay();
+                
+                // 前月の空白セルを追加
+                for (let i = 0; i < firstDay; i++) {
+                    const emptyCell = document.createElement('div');
+                    emptyCell.className = 'calendar-day empty';
+                    grid.appendChild(emptyCell);
+                }
+                
+                // 月の日数を取得
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                // 今日の日付
+                const today = new Date();
+                const currentYear = today.getFullYear();
+                const currentMonth = today.getMonth();
+                const currentDay = today.getDate();
+                
+                // 日付セルを追加
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const dayCell = document.createElement('div');
+                    dayCell.textContent = i;
+                    dayCell.className = 'calendar-day';
+                    
+                    // 土曜日と日曜日のスタイル
+                    const dayOfWeek = (firstDay + i - 1) % 7;
+                    if (dayOfWeek === 0) dayCell.classList.add('sunday');
+                    if (dayOfWeek === 6) dayCell.classList.add('saturday');
+                    
+                    // 今日の日付をハイライト
+                    if (year === currentYear && month === currentMonth && i === currentDay) {
+                        dayCell.classList.add('today');
+                    }
+                    
+                    // クリックイベント
+                    dayCell.addEventListener('click', function() {
+                        onDateSelect(new Date(year, month, i));
+                        calendarElement.classList.add('hidden');
+                    });
+                    
+                    grid.appendChild(dayCell);
+                }
+                
+                calendarElement.appendChild(grid);
+            }
+            
+            // カレンダートグルボタンのイベント
+            startCalendarToggle.addEventListener('click', function() {
+                // 他のカレンダーを全て非表示
+                startJpCalendar.classList.add('hidden');
+                endCalendar.classList.add('hidden');
+                endJpCalendar.classList.add('hidden');
+                
+                // 現在選択されている日付を取得
+                const year = parseInt(westernYearSelect.value);
+                const month = parseInt(westernMonthSelect.value) - 1;
+                const day = parseInt(westernDaySelect.value);
+                const selectedDate = new Date(year, month, day);
+                
+                // カレンダーの表示/非表示を切り替え
+                if (startCalendar.classList.contains('hidden')) {
+                    generateCalendar(startCalendar, selectedDate, function(date) {
+                        // 選択された日付を設定
+                        westernYearSelect.value = date.getFullYear();
+                        westernMonthSelect.value = date.getMonth() + 1;
+                        updateWesternDays(westernYearSelect, westernMonthSelect, westernDaySelect);
+                        westernDaySelect.value = date.getDate();
+                        
+                        // 日付変更時に自動計算
+                        calculatePeriod();
+                    });
+                    startCalendar.classList.remove('hidden');
+                } else {
+                    startCalendar.classList.add('hidden');
+                }
+            });
+            
+            startJpCalendarToggle.addEventListener('click', function() {
+                // 他のカレンダーを全て非表示
+                startCalendar.classList.add('hidden');
+                endCalendar.classList.add('hidden');
+                endJpCalendar.classList.add('hidden');
+                
+                // 現在選択されている元号の日付を西暦に変換
+                const era = eraSelect.value;
+                const year = parseInt(eraYearSelect.value) || 1;
+                const month = parseInt(eraMonthSelect.value);
+                const day = parseInt(eraDaySelect.value);
+                
+                let westernYear;
+                switch(era) {
+                    case 'meiji': westernYear = 1867 + year; break;
+                    case 'taisho': westernYear = 1911 + year; break;
+                    case 'showa': westernYear = 1925 + year; break;
+                    case 'heisei': westernYear = 1988 + year; break;
+                    case 'reiwa': westernYear = 2018 + year; break;
+                }
+                
+                const selectedDate = new Date(westernYear, month - 1, day);
+                
+                // カレンダーの表示/非表示を切り替え
+                if (startJpCalendar.classList.contains('hidden')) {
+                    generateCalendar(startJpCalendar, selectedDate, function(date) {
+                        // 選択された日付を元号に変換
+                        const jpDate = convertToJapaneseEra(date);
+                        
+                        // 元号フォームに設定
+                        eraSelect.value = jpDate.era;
+                        updateEraYears(eraSelect, eraYearSelect);
+                        eraYearSelect.value = jpDate.year;
+                        eraMonthSelect.value = jpDate.month;
+                        updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect);
+                        eraDaySelect.value = jpDate.day;
+                        
+                        // 日付変更時に自動計算
+                        calculatePeriod();
+                    });
+                    startJpCalendar.classList.remove('hidden');
+                } else {
+                    startJpCalendar.classList.add('hidden');
+                }
+            });
+            
+            endCalendarToggle.addEventListener('click', function() {
+                // 他のカレンダーを全て非表示
+                startCalendar.classList.add('hidden');
+                startJpCalendar.classList.add('hidden');
+                endJpCalendar.classList.add('hidden');
+                
+                // 現在選択されている日付を取得
+                const year = parseInt(refWesternYearSelect.value);
+                const month = parseInt(refWesternMonthSelect.value) - 1;
+                const day = parseInt(refWesternDaySelect.value);
+                const selectedDate = new Date(year, month, day);
+                
+                // カレンダーの表示/非表示を切り替え
+                if (endCalendar.classList.contains('hidden')) {
+                    generateCalendar(endCalendar, selectedDate, function(date) {
+                        // 選択された日付を設定
+                        refWesternYearSelect.value = date.getFullYear();
+                        refWesternMonthSelect.value = date.getMonth() + 1;
+                        updateWesternDays(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect);
+                        refWesternDaySelect.value = date.getDate();
+                        
+                        // 日付変更時に自動計算
+                        calculatePeriod();
+                    });
+                    endCalendar.classList.remove('hidden');
+                } else {
+                    endCalendar.classList.add('hidden');
+                }
+            });
+            
+            endJpCalendarToggle.addEventListener('click', function() {
+                // 他のカレンダーを全て非表示
+                startCalendar.classList.add('hidden');
+                startJpCalendar.classList.add('hidden');
+                endCalendar.classList.add('hidden');
+                
+                // 現在選択されている元号の日付を西暦に変換
+                const era = refEraSelect.value;
+                const year = parseInt(refEraYearSelect.value) || 1;
+                const month = parseInt(refEraMonthSelect.value);
+                const day = parseInt(refEraDaySelect.value);
+                
+                let westernYear;
+                switch(era) {
+                    case 'meiji': westernYear = 1867 + year; break;
+                    case 'taisho': westernYear = 1911 + year; break;
+                    case 'showa': westernYear = 1925 + year; break;
+                    case 'heisei': westernYear = 1988 + year; break;
+                    case 'reiwa': westernYear = 2018 + year; break;
+                }
+                
+                const selectedDate = new Date(westernYear, month - 1, day);
+                
+                // カレンダーの表示/非表示を切り替え
+                if (endJpCalendar.classList.contains('hidden')) {
+                    generateCalendar(endJpCalendar, selectedDate, function(date) {
+                        // 選択された日付を元号に変換
+                        const jpDate = convertToJapaneseEra(date);
+                        
+                        // 元号フォームに設定
+                        refEraSelect.value = jpDate.era;
+                        updateEraYears(refEraSelect, refEraYearSelect);
+                        refEraYearSelect.value = jpDate.year;
+                        refEraMonthSelect.value = jpDate.month;
+                        updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+                        refEraDaySelect.value = jpDate.day;
+                        
+                        // 日付変更時に自動計算
+                        calculatePeriod();
+                    });
+                    endJpCalendar.classList.remove('hidden');
+                } else {
+                    endJpCalendar.classList.add('hidden');
+                }
+            });
+            
+            // 逆算モードのカレンダートグルボタンのイベント
+            reverseStartCalendarToggle.addEventListener('click', function() {
+                // 他のカレンダーを全て非表示
+                reverseStartJpCalendar.classList.add('hidden');
+                
+                // 現在選択されている日付を取得
+                const year = parseInt(reverseWesternYearSelect.value);
+                const month = parseInt(reverseWesternMonthSelect.value) - 1;
+                const day = parseInt(reverseWesternDaySelect.value);
+                const selectedDate = new Date(year, month, day);
+                
+                // カレンダーの表示/非表示を切り替え
+                if (reverseStartCalendar.classList.contains('hidden')) {
+                    generateCalendar(reverseStartCalendar, selectedDate, function(date) {
+                        // 選択された日付を設定
+                        reverseWesternYearSelect.value = date.getFullYear();
+                        reverseWesternMonthSelect.value = date.getMonth() + 1;
+                        updateWesternDays(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect);
+                        reverseWesternDaySelect.value = date.getDate();
+                    });
+                    reverseStartCalendar.classList.remove('hidden');
+                } else {
+                    reverseStartCalendar.classList.add('hidden');
+                }
+            });
+            
+            reverseStartJpCalendarToggle.addEventListener('click', function() {
+                // 他のカレンダーを全て非表示
+                reverseStartCalendar.classList.add('hidden');
+                
+                // 現在選択されている元号の日付を西暦に変換
+                const era = reverseEraSelect.value;
+                const year = parseInt(reverseEraYearSelect.value) || 1;
+                const month = parseInt(reverseEraMonthSelect.value);
+                const day = parseInt(reverseEraDaySelect.value);
+                
+                let westernYear;
+                switch(era) {
+                    case 'meiji': westernYear = 1867 + year; break;
+                    case 'taisho': westernYear = 1911 + year; break;
+                    case 'showa': westernYear = 1925 + year; break;
+                    case 'heisei': westernYear = 1988 + year; break;
+                    case 'reiwa': westernYear = 2018 + year; break;
+                }
+                
+                const selectedDate = new Date(westernYear, month - 1, day);
+                
+                // カレンダーの表示/非表示を切り替え
+                if (reverseStartJpCalendar.classList.contains('hidden')) {
+                    generateCalendar(reverseStartJpCalendar, selectedDate, function(date) {
+                        // 選択された日付を元号に変換
+                        const jpDate = convertToJapaneseEra(date);
+                        
+                        // 元号フォームに設定
+                        reverseEraSelect.value = jpDate.era;
+                        updateEraYears(reverseEraSelect, reverseEraYearSelect);
+                        reverseEraYearSelect.value = jpDate.year;
+                        reverseEraMonthSelect.value = jpDate.month;
+                        updateEraDays(reverseEraSelect, reverseEraYearSelect, reverseEraMonthSelect, reverseEraDaySelect);
+                        reverseEraDaySelect.value = jpDate.day;
+                    });
+                    reverseStartJpCalendar.classList.remove('hidden');
+                } else {
+                    reverseStartJpCalendar.classList.add('hidden');
+                }
+            });
+            
+            // 西暦から元号への変換
+            function convertToJapaneseEra(date) {
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                
+                let era, eraYear;
+                
+                if (date >= eraStartDates.reiwa) {
+                    era = 'reiwa';
+                    eraYear = year - 2018;
+                } else if (date >= eraStartDates.heisei) {
+                    era = 'heisei';
+                    eraYear = year - 1988;
+                } else if (date >= eraStartDates.showa) {
+                    era = 'showa';
+                    eraYear = year - 1925;
+                } else if (date >= eraStartDates.taisho) {
+                    era = 'taisho';
+                    eraYear = year - 1911;
+                } else if (date >= eraStartDates.meiji) {
+                    era = 'meiji';
+                    eraYear = year - 1867;
+                } else {
+                    return { era: 'meiji', year: 1, month: month, day: day };
+                }
+                
+                return { era: era, year: eraYear, month: month, day: day };
+            }
+            
+            // タブ切り替え（開始日）
+            tabWestern.addEventListener('click', function() {
+                tabWestern.classList.add('active');
+                tabJapanese.classList.remove('active');
+                westernForm.classList.remove('hidden');
+                japaneseForm.classList.add('hidden');
+                
+                // カレンダーを非表示
+                startCalendar.classList.add('hidden');
+                startJpCalendar.classList.add('hidden');
+            });
+            
+            tabJapanese.addEventListener('click', function() {
+                tabJapanese.classList.add('active');
+                tabWestern.classList.remove('active');
+                japaneseForm.classList.remove('hidden');
+                westernForm.classList.add('hidden');
+                
+                // カレンダーを非表示
+                startCalendar.classList.add('hidden');
+                startJpCalendar.classList.add('hidden');
+            });
+            
+            // タブ切り替え（終了日）
+            refTabWestern.addEventListener('click', function() {
+                refTabWestern.classList.add('active');
+                refTabJapanese.classList.remove('active');
+                refWesternForm.classList.remove('hidden');
+                refJapaneseForm.classList.add('hidden');
+                
+                // カレンダーを非表示
+                endCalendar.classList.add('hidden');
+                endJpCalendar.classList.add('hidden');
+            });
+            
+            refTabJapanese.addEventListener('click', function() {
+                refTabJapanese.classList.add('active');
+                refTabWestern.classList.remove('active');
+                refJapaneseForm.classList.remove('hidden');
+                refWesternForm.classList.add('hidden');
+                
+                // カレンダーを非表示
+                endCalendar.classList.add('hidden');
+                endJpCalendar.classList.add('hidden');
+            });
+            
+            // 逆算モードのタブ切り替え
+            reverseTabWestern.addEventListener('click', function() {
+                reverseTabWestern.classList.add('active');
+                reverseTabJapanese.classList.remove('active');
+                reverseWesternForm.classList.remove('hidden');
+                reverseJapaneseForm.classList.add('hidden');
+                
+                // カレンダーを非表示
+                reverseStartCalendar.classList.add('hidden');
+                reverseStartJpCalendar.classList.add('hidden');
+            });
+            
+            reverseTabJapanese.addEventListener('click', function() {
+                reverseTabJapanese.classList.add('active');
+                reverseTabWestern.classList.remove('active');
+                reverseJapaneseForm.classList.remove('hidden');
+                reverseWesternForm.classList.add('hidden');
+                
+                // カレンダーを非表示
+                reverseStartCalendar.classList.add('hidden');
+                reverseStartJpCalendar.classList.add('hidden');
+            });
+            
+            // 結果表示タブ切り替え
+            resultTabPeriod.addEventListener('click', function() {
+                resultTabPeriod.classList.add('active');
+                resultTabDays.classList.remove('active');
+                periodResult.classList.remove('hidden');
+                daysResult.classList.add('hidden');
+            });
+            
+            resultTabDays.addEventListener('click', function() {
+                resultTabDays.classList.add('active');
+                resultTabPeriod.classList.remove('active');
+                daysResult.classList.remove('hidden');
+                periodResult.classList.add('hidden');
+            });
+            
+            // プリセットボタンのイベント
+            startPresetToday.addEventListener('click', function() {
+                setDateToToday(westernYearSelect, westernMonthSelect, westernDaySelect);
+                tabWestern.click();
+                calculatePeriod();
+            });
+            
+            startPresetYesterday.addEventListener('click', function() {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                setDateToSpecific(westernYearSelect, westernMonthSelect, westernDaySelect, yesterday);
+                tabWestern.click();
+                calculatePeriod();
+            });
+            
+            startPresetWeek.addEventListener('click', function() {
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                setDateToSpecific(westernYearSelect, westernMonthSelect, westernDaySelect, weekAgo);
+                tabWestern.click();
+                calculatePeriod();
+            });
+            
+            endPresetToday.addEventListener('click', function() {
+                setDateToToday(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect);
+                refTabWestern.click();
+                calculatePeriod();
+            });
+            
+            endPresetYesterday.addEventListener('click', function() {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                setDateToSpecific(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect, yesterday);
+                refTabWestern.click();
+                calculatePeriod();
+            });
+            
+            // 逆算モードのプリセットボタン
+            reverseStartPresetToday.addEventListener('click', function() {
+                setDateToToday(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect);
+                reverseTabWestern.click();
+            });
+            
+            reverseStartPresetYesterday.addEventListener('click', function() {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                setDateToSpecific(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect, yesterday);
+                reverseTabWestern.click();
+            });
+            
+            reverseStartPresetWeek.addEventListener('click', function() {
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                setDateToSpecific(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect, weekAgo);
+                reverseTabWestern.click();
+            });
+            
+            // 日付を今日に設定する関数
+            function setDateToToday(yearSelect, monthSelect, daySelect) {
+                const today = new Date();
+                setDateToSpecific(yearSelect, monthSelect, daySelect, today);
+            }
+            
+            // 日付を特定の日に設定する関数
+            function setDateToSpecific(yearSelect, monthSelect, daySelect, date) {
+                yearSelect.value = date.getFullYear();
+                monthSelect.value = date.getMonth() + 1;
+                updateWesternDays(yearSelect, monthSelect, daySelect);
+                daySelect.value = date.getDate();
+            }
+            
+            // 今日にリセットボタン
+            resetToToday.addEventListener('click', function() {
+                // 西暦フォームをリセット
+                setDateToToday(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect);
+                
+                // 元号フォームもリセット
+                const jpDate = convertToJapaneseEra(new Date());
+                refEraSelect.value = jpDate.era;
+                updateEraYears(refEraSelect, refEraYearSelect);
+                refEraYearSelect.value = jpDate.year;
+                refEraMonthSelect.value = jpDate.month;
+                updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+                refEraDaySelect.value = jpDate.day;
+                
+                // 西暦タブを表示
+                refTabWestern.click();
+                
+                // 計算を実行
+                calculatePeriod();
+            });
+            
+            // 日付入れ替えボタン
+            swapDatesBtn.addEventListener('click', function() {
+                // 開始日と終了日の値を取得
+                let startDate, endDate;
+                
+                // 開始日を取得
+                if (!westernForm.classList.contains('hidden')) {
+                    // 西暦入力の場合
+                    const year = parseInt(westernYearSelect.value);
+                    const month = parseInt(westernMonthSelect.value);
+                    const day = parseInt(westernDaySelect.value);
+                    startDate = new Date(year, month - 1, day);
+                } else {
+                    // 元号入力の場合
+                    const era = eraSelect.value;
+                    const year = parseInt(eraYearSelect.value) || 1;
+                    const month = parseInt(eraMonthSelect.value);
+                    const day = parseInt(eraDaySelect.value);
+                    startDate = convertToWesternDate(era, year, month, day);
+                }
+                
+                // 終了日を取得
+                if (!refWesternForm.classList.contains('hidden')) {
+                    // 西暦入力の場合
+                    const year = parseInt(refWesternYearSelect.value);
+                    const month = parseInt(refWesternMonthSelect.value);
+                    const day = parseInt(refWesternDaySelect.value);
+                    endDate = new Date(year, month - 1, day);
+                } else {
+                    // 元号入力の場合
+                    const era = refEraSelect.value;
+                    const year = parseInt(refEraYearSelect.value) || 1;
+                    const month = parseInt(refEraMonthSelect.value);
+                    const day = parseInt(refEraDaySelect.value);
+                    endDate = convertToWesternDate(era, year, month, day);
+                }
+                
+                // 値を入れ替え
+                setDateToSpecific(westernYearSelect, westernMonthSelect, westernDaySelect, endDate);
+                setDateToSpecific(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect, startDate);
+                
+                // 元号の値も更新
+                const startJpDate = convertToJapaneseEra(endDate);
+                eraSelect.value = startJpDate.era;
+                updateEraYears(eraSelect, eraYearSelect);
+                eraYearSelect.value = startJpDate.year;
+                eraMonthSelect.value = startJpDate.month;
+                updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect);
+                eraDaySelect.value = startJpDate.day;
+                
+                const endJpDate = convertToJapaneseEra(startDate);
+                refEraSelect.value = endJpDate.era;
+                updateEraYears(refEraSelect, refEraYearSelect);
+                refEraYearSelect.value = endJpDate.year;
+                refEraMonthSelect.value = endJpDate.month;
+                updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+                refEraDaySelect.value = endJpDate.day;
+                
+                // 計算を実行
+                calculatePeriod();
+            });
+            
+            // 元号、年、月が変更されたら日を更新（開始日）
+            eraSelect.addEventListener('change', function() {
+                updateEraYears(eraSelect, eraYearSelect);
+                updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect);
+                calculatePeriod();
+            });
+            eraYearSelect.addEventListener('change', function() {
+                updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect);
+                calculatePeriod();
+            });
+            eraMonthSelect.addEventListener('change', function() {
+                updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect);
+                calculatePeriod();
+            });
+            eraDaySelect.addEventListener('change', calculatePeriod);
+            
+            // 西暦の年、月が変更されたら日を更新（開始日）
+            westernYearSelect.addEventListener('change', function() {
+                updateWesternDays(westernYearSelect, westernMonthSelect, westernDaySelect);
+                calculatePeriod();
+            });
+            westernMonthSelect.addEventListener('change', function() {
+                updateWesternDays(westernYearSelect, westernMonthSelect, westernDaySelect);
+                calculatePeriod();
+            });
+            westernDaySelect.addEventListener('change', calculatePeriod);
+            
+            // 元号、年、月が変更されたら日を更新（終了日）
+            refEraSelect.addEventListener('change', function() {
+                updateEraYears(refEraSelect, refEraYearSelect);
+                updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+                calculatePeriod();
+            });
+            refEraYearSelect.addEventListener('change', function() {
+                updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+                calculatePeriod();
+            });
+            refEraMonthSelect.addEventListener('change', function() {
+                updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+                calculatePeriod();
+            });
+            refEraDaySelect.addEventListener('change', calculatePeriod);
+            
+            // 西暦の年、月が変更されたら日を更新（終了日）
+            refWesternYearSelect.addEventListener('change', function() {
+                updateWesternDays(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect);
+                calculatePeriod();
+            });
+            refWesternMonthSelect.addEventListener('change', function() {
+                updateWesternDays(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect);
+                calculatePeriod();
+            });
+            refWesternDaySelect.addEventListener('change', calculatePeriod);
+            
+            // 逆算モードの元号、年、月が変更されたら日を更新
+            reverseEraSelect.addEventListener('change', function() {
+                updateEraYears(reverseEraSelect, reverseEraYearSelect);
+                updateEraDays(reverseEraSelect, reverseEraYearSelect, reverseEraMonthSelect, reverseEraDaySelect);
+            });
+            reverseEraYearSelect.addEventListener('change', function() {
+                updateEraDays(reverseEraSelect, reverseEraYearSelect, reverseEraMonthSelect, reverseEraDaySelect);
+            });
+            reverseEraMonthSelect.addEventListener('change', function() {
+                updateEraDays(reverseEraSelect, reverseEraYearSelect, reverseEraMonthSelect, reverseEraDaySelect);
+            });
+            
+            // 逆算モードの西暦の年、月が変更されたら日を更新
+            reverseWesternYearSelect.addEventListener('change', function() {
+                updateWesternDays(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect);
+            });
+            reverseWesternMonthSelect.addEventListener('change', function() {
+                updateWesternDays(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect);
+            });
+            
+            // 元号から西暦への変換
+            function convertToWesternDate(era, year, month, day) {
+                let westernYear;
+                switch(era) {
+                    case 'meiji': westernYear = 1867 + year; break;
+                    case 'taisho': westernYear = 1911 + year; break;
+                    case 'showa': westernYear = 1925 + year; break;
+                    case 'heisei': westernYear = 1988 + year; break;
+                    case 'reiwa': westernYear = 2018 + year; break;
+                }
+                
+                return new Date(westernYear, month - 1, day);
+            }
+            
+            // 干支を取得する関数
+            function getZodiacSign(year) {
+                const zodiacSigns = [
+                    '庚子', '辛丑', '壬寅', '癸卯', '甲辰', '乙巳', '丙午', '丁未', '戊申', '己酉',
+                    '庚戌', '辛亥', '壬子', '癸丑', '甲寅', '乙卯', '丙辰', '丁巳', '戊午', '己未',
+                    '庚申', '辛酉', '壬戌', '癸亥', '甲子', '乙丑', '丙寅', '丁卯', '戊辰', '己巳',
+                    '庚午', '辛未', '壬申', '癸酉', '甲戌', '乙亥', '丙子', '丁丑', '戊寅', '己卯',
+                    '庚辰', '辛巳', '壬午', '癸未', '甲申', '乙酉', '丙戌', '丁亥', '戊子', '己丑',
+                    '庚寅', '辛卯', '壬辰', '癸巳', '甲午', '乙未', '丙申', '丁酉', '戊戌', '己亥'
+                ];
+                
+                const zodiacAnimals = [
+                    'ねずみ年（ねずみどし）', 'うし年（うしどし）', 'とら年（とらどし）', 'うさぎ年（うさぎどし）', 'たつ年（たつどし）', 'へび年（へびどし）',
+                    'うま年（うまどし）', 'ひつじ年（ひつじどし）', 'さる年（さるどし）', 'とり年（とりどし）', 'いぬ年（いぬどし）', 'いのしし年（いのししどし）'
+                ];
+                
+                // 1984年が甲子年（0番目）として計算
+                const baseYear = 1984;
+                const index = (year - baseYear) % 60;
+                const adjustedIndex = index < 0 ? index + 60 : index;
+                
+                const animalIndex = adjustedIndex % 12;
+                
+                return `${zodiacSigns[adjustedIndex]} ${zodiacAnimals[animalIndex]}`;
+            }
+            
+            // 西暦から元号への変換
+            function convertToJapaneseDate(date) {
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                
+                let era, eraYear;
+                
+                if (date >= eraStartDates.reiwa) {
+                    era = 'reiwa';
+                    eraYear = year - 2018;
+                } else if (date >= eraStartDates.heisei) {
+                    era = 'heisei';
+                    eraYear = year - 1988;
+                } else if (date >= eraStartDates.showa) {
+                    era = 'showa';
+                    eraYear = year - 1925;
+                } else if (date >= eraStartDates.taisho) {
+                    era = 'taisho';
+                    eraYear = year - 1911;
+                } else if (date >= eraStartDates.meiji) {
+                    era = 'meiji';
+                    eraYear = year - 1867;
+                } else {
+                    return '明治以前';
+                }
+                
+                return `${eraNames[era]}${eraYear === 1 ? '元' : eraYear}年${month}月${day}日`;
+            }
+            
+            // 日付の差分を計算（年、月、日）
+            function calculateDateDifference(startDate, endDate) {
+                // 未来の日付の場合は開始日と終了日を入れ替え、負の値のフラグを立てる
+                let isNegative = false;
+                if (startDate > endDate) {
+                    const temp = startDate;
+                    startDate = endDate;
+                    endDate = temp;
+                    isNegative = true;
+                }
+                
+                // 年の差
+                let years = endDate.getFullYear() - startDate.getFullYear();
+                
+                // 月の差
+                let months = endDate.getMonth() - startDate.getMonth();
+                
+                // 日の差
+                let days = endDate.getDate() - startDate.getDate();
+                
+                // 日が負の場合、前月から日を借りる
+                if (days < 0) {
+                    // 前月の日数を取得
+                    const lastMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 0);
+                    days += lastMonth.getDate();
+                    months--;
+                }
+                
+                // 月が負の場合、前年から月を借りる
+                if (months < 0) {
+                    months += 12;
+                    years--;
+                }
+                
+                // 総日数を計算（ミリ秒を日に変換）
+                const totalDays = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+                
+                return {
+                    years: isNegative ? -years : years,
+                    months: isNegative ? -months : months,
+                    days: isNegative ? -days : days,
+                    totalDays: isNegative ? -totalDays : totalDays,
+                    isNegative: isNegative
+                };
+            }
+            
+            // 指定された期間を日付に加算する関数
+            function addPeriodToDate(date, years, months, days, isPast = false) {
+                const result = new Date(date);
+                
+                if (isPast) {
+                    // 過去の日付を計算
+                    result.setFullYear(result.getFullYear() - years);
+                    result.setMonth(result.getMonth() - months);
+                    result.setDate(result.getDate() - days);
+                } else {
+                    // 未来の日付を計算
+                    result.setFullYear(result.getFullYear() + years);
+                    result.setMonth(result.getMonth() + months);
+                    result.setDate(result.getDate() + days);
+                }
+                
+                return result;
+            }
+            
+            // 期間計算（リアルタイム更新用）
+            function calculatePeriod() {
+                let startDate, endDate;
+                
+                try {
+                    // 開始日を取得
+                    if (!westernForm.classList.contains('hidden')) {
+                        // 西暦入力の場合
+                        const year = parseInt(westernYearSelect.value);
+                        const month = parseInt(westernMonthSelect.value);
+                        const day = parseInt(westernDaySelect.value);
+                        
+                        startDate = new Date(year, month - 1, day);
+                    } else {
+                        // 元号入力の場合
+                        const era = eraSelect.value;
+                        const year = parseInt(eraYearSelect.value) || 1;
+                        const month = parseInt(eraMonthSelect.value);
+                        const day = parseInt(eraDaySelect.value);
+                        
+                        startDate = convertToWesternDate(era, year, month, day);
+                        
+                        // 元号の有効期間内かチェック
+                        if (startDate < eraStartDates[era] || startDate > eraEndDates[era]) {
+                            return; // 無効な日付の場合は計算しない
+                        }
+                    }
+                    
+                    // 終了日を取得
+                    if (!refWesternForm.classList.contains('hidden')) {
+                        // 西暦入力の場合
+                        const year = parseInt(refWesternYearSelect.value);
+                        const month = parseInt(refWesternMonthSelect.value);
+                        const day = parseInt(refWesternDaySelect.value);
+                        
+                        endDate = new Date(year, month - 1, day);
+                    } else {
+                        // 元号入力の場合
+                        const era = refEraSelect.value;
+                        const year = parseInt(refEraYearSelect.value) || 1;
+                        const month = parseInt(refEraMonthSelect.value);
+                        const day = parseInt(refEraDaySelect.value);
+                        
+                        endDate = convertToWesternDate(era, year, month, day);
+                        
+                        // 元号の有効期間内かチェック
+                        if (endDate < eraStartDates[era] || endDate > eraEndDates[era]) {
+                            return; // 無効な日付の場合は計算しない
+                        }
+                    }
+                    
+                    // 期間を計算（年、月、日）
+                    const dateDiff = calculateDateDifference(startDate, endDate);
+                    
+                    // 結果コンテナを表示
+                    resultContainer.classList.remove('hidden');
+                    
+                    // 経過期間の表示設定
+                    if (dateDiff.isNegative) {
+                        // 終了日が開始日より古い場合
+                        periodMessage.textContent = "";
+                        periodYears.textContent = Math.abs(dateDiff.years);
+                        periodMonths.textContent = Math.abs(dateDiff.months);
+                        periodDays.textContent = Math.abs(dateDiff.days);
+                        periodSuffix.textContent = "前";
+                    } else {
+                        // 過去または現在の日付の場合
+                        periodMessage.textContent = "";
+                        periodYears.textContent = dateDiff.years;
+                        periodMonths.textContent = dateDiff.months;
+                        periodDays.textContent = dateDiff.days;
+                        periodSuffix.textContent = "が経過";
+                    }
+                    
+                    // 経過日数の表示設定
+                    const dayCount = Math.abs(dateDiff.totalDays) + 1; // 開始日を1日目とするため+1
+                    const pureElapsedDays = Math.abs(dateDiff.totalDays); // 純粋な経過日数（開始日を含まない）
+                    
+                    daysMessage.textContent = "";
+                    daysCount.textContent = dayCount;
+                    daysElapsed.textContent = pureElapsedDays;
+                    daysExplanation.textContent = "（開始日を1日目として計算）";
+                    daysElapsedExplanation.textContent = "（開始日を含まない純粋な経過日数）";
+                    
+                    // 開始日と終了日の表示
+                    const startYear = startDate.getFullYear();
+                    const startMonth = startDate.getMonth() + 1;
+                    const startDay = startDate.getDate();
+                    
+                    const endYear = endDate.getFullYear();
+                    const endMonth = endDate.getMonth() + 1;
+                    const endDay = endDate.getDate();
+                    
+                    startDateInfo.innerHTML = `<span class="font-medium text-gray-600">開始日:</span>
+                                              <span class="ml-2">${startYear}年${startMonth}月${startDay}日 (${convertToJapaneseDate(startDate)}) ${getZodiacSign(startYear)}</span>`;
+                    endDateInfo.innerHTML = `<span class="font-medium text-gray-600">終了日:</span>
+                                            <span class="ml-2">${endYear}年${endMonth}月${endDay}日 (${convertToJapaneseDate(endDate)}) ${getZodiacSign(endYear)}</span>`;
+                    
+                    // アニメーション効果のためにクラスを再適用
+                    const resultElement = resultContainer.querySelector('.result-appear');
+                    resultElement.classList.remove('result-appear');
+                    void resultElement.offsetWidth; // リフロー強制
+                    resultElement.classList.add('result-appear');
+                } catch (error) {
+                    console.error("計算エラー:", error);
+                }
+            }
+            
+            // 逆算計算
+            function calculateReverse() {
+                let startDate;
+                
+                try {
+                    // 開始日を取得
+                    if (!reverseWesternForm.classList.contains('hidden')) {
+                        // 西暦入力の場合
+                        const year = parseInt(reverseWesternYearSelect.value);
+                        const month = parseInt(reverseWesternMonthSelect.value);
+                        const day = parseInt(reverseWesternDaySelect.value);
+                        
+                        startDate = new Date(year, month - 1, day);
+                    } else {
+                        // 元号入力の場合
+                        const era = reverseEraSelect.value;
+                        const year = parseInt(reverseEraYearSelect.value) || 1;
+                        const month = parseInt(reverseEraMonthSelect.value);
+                        const day = parseInt(reverseEraDaySelect.value);
+                        
+                        startDate = convertToWesternDate(era, year, month, day);
+                        
+                        // 元号の有効期間内かチェック
+                        if (startDate < eraStartDates[era] || startDate > eraEndDates[era]) {
+                            alert('有効な元号の期間内で入力してください。');
+                            return;
+                        }
+                    }
+                    
+                    // 経過期間を取得
+                    const years = parseInt(periodYearsInput.value) || 0;
+                    const months = parseInt(periodMonthsInput.value) || 0;
+                    const days = parseInt(periodDaysInput.value) || 0;
+                    
+                    // 過去の日付を計算するかどうか
+                    const isPast = futureDateCheckbox.checked;
+                    
+                    // 終了日を計算
+                    const endDate = addPeriodToDate(startDate, years, months, days, isPast);
+                    
+                    // 通常モードの入力フォームに値を設定
+                    setDateToSpecific(westernYearSelect, westernMonthSelect, westernDaySelect, startDate);
+                    setDateToSpecific(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect, endDate);
+                    
+                    // 元号の値も更新
+                    const startJpDate = convertToJapaneseEra(startDate);
+                    eraSelect.value = startJpDate.era;
+                    updateEraYears(eraSelect, eraYearSelect);
+                    eraYearSelect.value = startJpDate.year;
+                    eraMonthSelect.value = startJpDate.month;
+                    updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect);
+                    eraDaySelect.value = startJpDate.day;
+                    
+                    const endJpDate = convertToJapaneseEra(endDate);
+                    refEraSelect.value = endJpDate.era;
+                    updateEraYears(refEraSelect, refEraYearSelect);
+                    refEraYearSelect.value = endJpDate.year;
+                    refEraMonthSelect.value = endJpDate.month;
+                    updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+                    refEraDaySelect.value = endJpDate.day;
+                    
+                    // 通常モードに切り替え
+                    modeNormal.click();
+                    
+                    // 計算を実行
+                    calculatePeriod();
+                } catch (error) {
+                    console.error("逆算エラー:", error);
+                    alert('計算中にエラーが発生しました。入力値を確認してください。');
+                }
+            }
+            
+            // 計算ボタンのイベント
+            calculateBtn.addEventListener('click', calculatePeriod);
+            calculateReverseBtn.addEventListener('click', calculateReverse);
+            
+            // ドキュメントクリックでカレンダーを閉じる
+            document.addEventListener('click', function(event) {
+                const calendars = [
+                    startCalendar, startJpCalendar, endCalendar, endJpCalendar,
+                    reverseStartCalendar, reverseStartJpCalendar
+                ];
+                const toggles = [
+                    startCalendarToggle, startJpCalendarToggle, endCalendarToggle, endJpCalendarToggle,
+                    reverseStartCalendarToggle, reverseStartJpCalendarToggle
+                ];
+                
+                // クリックされた要素がカレンダーまたはトグルボタンでない場合、全てのカレンダーを非表示
+                if (!calendars.some(cal => cal.contains(event.target)) && 
+                    !toggles.some(toggle => toggle === event.target || toggle.contains(event.target))) {
+                    calendars.forEach(cal => cal.classList.add('hidden'));
+                }
+            });
+            
+            // 初期化
+            initializeYearSelects();
+            
+            updateEraYears(eraSelect, eraYearSelect);
+            updateEraDays(eraSelect, eraYearSelect, eraMonthSelect, eraDaySelect);
+            updateWesternDays(westernYearSelect, westernMonthSelect, westernDaySelect);
+            
+            updateEraYears(refEraSelect, refEraYearSelect);
+            updateEraDays(refEraSelect, refEraYearSelect, refEraMonthSelect, refEraDaySelect);
+            updateWesternDays(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect);
+            
+            updateEraYears(reverseEraSelect, reverseEraYearSelect);
+            updateEraDays(reverseEraSelect, reverseEraYearSelect, reverseEraMonthSelect, reverseEraDaySelect);
+            updateWesternDays(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect);
+            
+            // 初期状態でタブを設定
+            tabWestern.click();
+            refTabWestern.click();
+            reverseTabWestern.click();
+            modeNormal.click();
+            
+            // 現在の月と日を選択
+            westernMonthSelect.value = currentMonth;
+            updateWesternDays(westernYearSelect, westernMonthSelect, westernDaySelect);
+            westernDaySelect.value = currentDay;
+            
+            refWesternMonthSelect.value = currentMonth;
+            updateWesternDays(refWesternYearSelect, refWesternMonthSelect, refWesternDaySelect);
+            refWesternDaySelect.value = currentDay;
+            
+            reverseWesternMonthSelect.value = currentMonth;
+            updateWesternDays(reverseWesternYearSelect, reverseWesternMonthSelect, reverseWesternDaySelect);
+            reverseWesternDaySelect.value = currentDay;
+            
+            // 初期計算を実行
+            calculatePeriod();
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'97aabd9375b68314',t:'MTc1NzEyNzg4My4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

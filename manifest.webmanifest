@@ -1,0 +1,14 @@
+{
+  "name": "期間計算アプリ",
+  "short_name": "期間計算",
+  "start_url": "app.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#c5487b",
+  "icons": [
+    { "src": "icon.png", "sizes": "192x192 256x256 384x384 512x512", "type": "image/png", "purpose": "maskable any" }
+  ]
+}
+
